@@ -23,6 +23,7 @@ MAX_HOLD_DAYS = 5
 # Trading Amount
 INITIAL_CAPITAL = 1000000  # 1 Million KRW
 TRADE_FEE_RATE = 0.0005  # 0.05% Upbit Fee
+SLIPPAGE_RATE = 0.0005 # 0.05% Estimated Slippage (Conservative)
 
 # Telegram
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")

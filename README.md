@@ -77,6 +77,14 @@ Long Max Hold Days: 5일
 11. 거래 시간
 정규장 시간이 24시간이다.
 
+12. 슬리피지 고려
+매수/매도 시 슬리피지가 발생할 수 있으므로 이를 고려한다.
+Backtest 시에도 적용한다.
+
+13. 수수료 고려
+매수/매도 시 수수료가 발생할 수 있으므로 이를 고려한다.
+Backtest 시에도 적용한다.
+
 # Upbit Coin Trading Bot - Walkthrough
 
 ## Overview
@@ -133,3 +141,11 @@ python main.py
     - Max Hold: 5 Days
 - **Notifications**: Telegram alerts for Buys, Sells, and Errors.
 - **Resilience**: Checks existing balance on restart to resume position management.
+
+## 5. Realistic Simulation (Slippage & Fees)
+To ensure backtest results match real-world conditions, the following costs are applied:
+- **Trading Fee**: 0.05% (Upbit Standard, applied to Buy and Sell).
+- **Slippage**: 0.05% (Conservative estimate).
+    - **Buy Execution**: `Market Price * (1 + 0.0005)`
+    - **Sell Execution**: `Market Price * (1 - 0.0005)`
+- **Impact**: Profit margins in backtests will be slightly lower than raw indicator signals would suggest, providing a safer margin for strategy validation.

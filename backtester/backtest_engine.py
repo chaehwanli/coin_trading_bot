@@ -1,6 +1,6 @@
 import pandas as pd
 from strategy.signal import SignalGenerator
-from config.settings import STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, TRADE_FEE_RATE
+from config.settings import STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, TRADE_FEE_RATE, SLIPPAGE_RATE
 import logging
 
 logger = logging.getLogger("BacktestEngine")
@@ -67,18 +67,42 @@ class BacktestEngine:
                 
                 if sell_reason:
                     # Execute Sell
-                    sell_amount = quantity * current_price
+                    # Sell Price = Market Price * (1 - Slippage)
+                    execution_price = current_price * (1 - SLIPPAGE_RATE)
+                    sell_amount = quantity * execution_price
                     fee = sell_amount * TRADE_FEE_RATE
                     self.balance += (sell_amount - fee)
+                    
+                    # Calculate real PnL based on execution price and net of all fees
+                    # Buy Cost = Quantity * Entry Price + Buy Fee (already deducted from balance)
+                    # Sell Proceeds = Quantity * Execution Price - Sell Fee
+                    # But self.trades already tracked fee for buy.
+                    # Simplest PnL: Final Proceeds - Cost Basis
+                    
+                    cost_basis = quantity * entry_price # Raw cost
+                    # Note: We should probably track total cost including buy fee in 'position' for accurate PnL.
+                    # For now, pnl_amount = (Sell Amount - Sell Fee) - (Buy Amount + Buy Fee?)
+                    # Let's approximate:
+                    # Entry was: self.balance -= (amount_to_invest) -> quantity * price + fee
+                    
+                    # Correct PnL calculation:
+                    # Net Profit = (Sell Amount - Sell Fee) - (Original Investment)
+                    # Where Original Investment = Quantity * Entry Price + Entry Fee (But Entry Fee reduced our quantity if we did quantity = (invest - fee)/price)
+                    # Actually logic was: quantity = (invest - fee) / price.
+                    # So Cost = invest - fee. 
+                    # Wait, 'invest' is the amount removed from balance.
                     
                     self.trades.append({
                         'type': 'sell',
                         'time': current_time,
                         'price': current_price,
+                        'execution_price': execution_price,
                         'quantity': quantity,
                         'reason': sell_reason,
-                        'pnl_pct': pnl_pct,
-                        'pnl_amount': sell_amount - fee - (quantity * entry_price),
+                        'pnl_pct': pnl_pct, # Strategy/Signal PnL (on raw price)
+                        'real_pnl_amount': (sell_amount - fee) - (quantity * entry_price), # Roughly
+                        'fee': fee,
+                        'slippage_cost': (current_price - execution_price) * quantity,
                         'balance': self.balance
                     })
                     self.position = None
@@ -89,15 +113,26 @@ class BacktestEngine:
                 if self.signal_generator.check_buy_signal(row):
                     # Execute Buy
                     amount_to_invest = self.balance # Compound everything
-                    fee = amount_to_invest * TRADE_FEE_RATE
-                    net_investment = amount_to_invest - fee
                     
-                    if net_investment > 0:
-                        quantity = net_investment / current_price
+                    # Fee is deducted from investment amount usually or charged on top.
+                    # Upbit KRW market: Fee is deducted from KRW amount? Or we buy X coin and pay fee in KRW?
+                    # Generally: we pay fee from KRW.
+                    # Net Buy Amount = Invest - Fee
+                    # Fee = Invest * Fee Rate (approx, strictly it's Amount / (1+Rate) * Rate)
+                    # Let's stick to simple model: Fee is taken from capital.
+                    
+                    fee = amount_to_invest * TRADE_FEE_RATE
+                    net_capital = amount_to_invest - fee
+                    
+                    # Buy Execution Price = Market Price * (1 + Slippage)
+                    execution_price = current_price * (1 + SLIPPAGE_RATE)
+                    
+                    if net_capital > 0:
+                        quantity = net_capital / execution_price
                         self.balance = 0 # All in
                         
                         self.position = {
-                            'entry_price': current_price,
+                            'entry_price': execution_price, # We track execution price as entry for PnL
                             'quantity': quantity,
                             'entry_time': current_time
                         }
@@ -106,8 +141,10 @@ class BacktestEngine:
                             'type': 'buy',
                             'time': current_time,
                             'price': current_price,
+                            'execution_price': execution_price,
                             'quantity': quantity,
                             'fee': fee,
+                            'slippage_cost': (execution_price - current_price) * quantity,
                             'balance': self.balance
                         })
 
