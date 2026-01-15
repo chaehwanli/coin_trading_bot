@@ -6,7 +6,8 @@ from urllib.parse import urlencode
 import pandas as pd
 import time
 import datetime
-from config.settings import ACCESS_KEY, SECRET_KEY, get_logger
+from config.settings import ACCESS_KEY, SECRET_KEY
+from config.logging_config import get_logger
 
 logger = get_logger("UpbitAPI")
 

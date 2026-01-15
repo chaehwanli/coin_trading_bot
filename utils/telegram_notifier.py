@@ -1,5 +1,6 @@
 import requests
-from config.settings import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, get_logger
+from config.settings import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from config.logging_config import get_logger
 
 logger = get_logger("TelegramNotifier")
 

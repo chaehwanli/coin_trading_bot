@@ -6,13 +6,19 @@ import logging
 logger = logging.getLogger("BacktestEngine")
 
 class BacktestEngine:
-    def __init__(self, df, initial_capital=1000000, signal_generator=None):
+    def __init__(self, df, initial_capital=1000000, signal_generator=None, 
+                 stop_loss_pct=STOP_LOSS_PCT, take_profit_pct=TAKE_PROFIT_PCT, max_hold_days=MAX_HOLD_DAYS):
         self.df = df
         self.initial_capital = initial_capital
         self.balance = initial_capital
         self.signal_generator = signal_generator if signal_generator else SignalGenerator()
         self.trades = []
         self.position = None # { 'entry_price': float, 'quantity': float, 'entry_time': datetime }
+        
+        # Risk Management Params (Dynamic for optimization)
+        self.stop_loss_pct = stop_loss_pct
+        self.take_profit_pct = take_profit_pct
+        self.max_hold_days = max_hold_days
         
         # Validation checks
         if self.df is None or self.df.empty:
@@ -51,12 +57,12 @@ class BacktestEngine:
                 sell_reason = None
                 
                 # 6.1 Stop Loss / Take Profit
-                if pnl_pct <= -STOP_LOSS_PCT:
+                if pnl_pct <= -self.stop_loss_pct:
                     sell_reason = "Stop Loss"
-                elif pnl_pct >= TAKE_PROFIT_PCT:
+                elif pnl_pct >= self.take_profit_pct:
                     sell_reason = "Take Profit"
                 # 6.2 Max Hold Days
-                elif days_held >= MAX_HOLD_DAYS:
+                elif days_held >= self.max_hold_days:
                     sell_reason = "Max Hold Days"
                 
                 if sell_reason:

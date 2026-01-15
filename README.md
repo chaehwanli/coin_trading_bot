@@ -76,3 +76,60 @@ Long Max Hold Days: 5일
 
 11. 거래 시간
 정규장 시간이 24시간이다.
+
+# Upbit Coin Trading Bot - Walkthrough
+
+## Overview
+This bot trades crypto on Upbit using an RSI + MACD strategy. It includes backtesting, parameter optimization, and Telegram notifications.
+
+## 1. Setup
+
+### Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### Configure Environment Variables
+Set the following environment variables (or add to `config/settings.py` directly, though env vars are safer):
+```bash
+export UPBIT_ACCESS_KEY="your_access_key"
+export UPBIT_SECRET_KEY="your_secret_key"
+export TELEGRAM_BOT_TOKEN="your_bot_token"
+export TELEGRAM_CHAT_ID="your_chat_id"
+```
+
+## 2. Optimization (Recommended First Step)
+Run the optimization script to find the best parameters.
+
+### RSI Optimization
+Find the best RSI Oversold threshold (Range: 20-50).
+```bash
+python optimize.py --mode rsi --market KRW-BTC --days 365
+```
+
+### Risk Parameter Optimization
+Find the best combination of Stop Loss, Take Profit, and Max Hold Days.
+```bash
+python optimize.py --mode pnl --market KRW-BTC --days 365
+```
+
+This will save results to `optimization_results_{mode}_{market}.csv`.
+**Update `config/settings.py`** with the best parameters found.
+
+## 3. Backtesting
+You can also run a manual backtest (the optimization script essentially does this, but standard backtest code is in `backtester/backtest_engine.py` and can be wrapped if needed).
+
+## 4. Running the Bot
+Start the bot. It will run every hour at minute 01.
+```bash
+python main.py
+```
+
+## Features
+- **Strategy**: 1-hour timeframe. Buy on RSI Oversold + MACD Golden Cross.
+- **Sell Logic**: 
+    - Stop Loss: -3.0%
+    - Take Profit: +35.0%
+    - Max Hold: 5 Days
+- **Notifications**: Telegram alerts for Buys, Sells, and Errors.
+- **Resilience**: Checks existing balance on restart to resume position management.

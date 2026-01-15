@@ -1,5 +1,6 @@
 from data_fetcher.upbit_api import UpbitAPI
-from config.settings import TARGET_COIN, TRADE_FEE_RATE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, get_logger
+from config.settings import TARGET_COIN, TRADE_FEE_RATE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS
+from config.logging_config import get_logger
 from utils.telegram_notifier import send_message
 import datetime
 import math
