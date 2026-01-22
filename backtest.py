@@ -1,0 +1,72 @@
+import argparse
+import pandas as pd
+from utils.data_loader import load_data
+from backtester.backtest_engine import BacktestEngine
+from strategy.signal import SignalGenerator
+from config.logging_config import setup_logging, get_logger
+from config.settings import (
+    TARGET_COIN, RSI_OVERSOLD, 
+    STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS
+)
+
+setup_logging()
+logger = get_logger("Backtester")
+
+def fetch_data(market, days):
+    logger.info(f"Loading {days} days of data for {market}...")
+    df = load_data(market, days)
+    if df is None or df.empty:
+        logger.error("No data loaded. Did you run 'python collect_data.py'?")
+        return None
+    logger.info(f"Loaded {len(df)} rows.")
+    return df
+
+def run_backtest(args):
+    df = fetch_data(args.market, args.days)
+    if df is None:
+        return
+
+    logger.info(f"Running Backtest: RSI<{args.rsi}, SL={args.sl}%, TP={args.tp}%, MaxHold={args.max_hold}d")
+    
+    signal_gen = SignalGenerator(rsi_oversold=args.rsi)
+    engine = BacktestEngine(
+        df, 
+        signal_generator=signal_gen,
+        stop_loss_pct=args.sl,
+        take_profit_pct=args.tp,
+        max_hold_days=args.max_hold
+    )
+    
+    result = engine.run()
+    
+    print("\n" + "="*40)
+    print(f" BACKTEST RESULTS ({args.market})")
+    print("="*40)
+    print(f"Period: {args.days} days")
+    print(f"Initial Balance: {result['initial_balance']:,.0f} KRW")
+    print(f"Final Balance:   {result['final_balance']:,.0f} KRW")
+    print(f"Return:          {result['return_pct']:.2f}%")
+    print(f"Total Trades:    {result['total_trades']}")
+    print("-" * 40)
+    
+    # Optional: Save trace log if available
+    # Assuming BacktestEngine might have a log of trades, if implemented.
+    # The current engine returns a summary dict. 
+    # If we want detailed trade logs, we'd need to modify engine or capture logs.
+
+def main():
+    parser = argparse.ArgumentParser(description="Run a single backtest simulation.")
+    
+    parser.add_argument("--market", type=str, default=TARGET_COIN, help=f"Market (default: {TARGET_COIN})")
+    parser.add_argument("--days", type=int, default=365, help="Days to backtest (default: 365)")
+    
+    parser.add_argument("--rsi", type=float, default=RSI_OVERSOLD, help=f"RSI Oversold Threshold (default: {RSI_OVERSOLD})")
+    parser.add_argument("--sl", type=float, default=STOP_LOSS_PCT, help=f"Stop Loss % (default: {STOP_LOSS_PCT})")
+    parser.add_argument("--tp", type=float, default=TAKE_PROFIT_PCT, help=f"Take Profit % (default: {TAKE_PROFIT_PCT})")
+    parser.add_argument("--max-hold", type=int, default=MAX_HOLD_DAYS, help=f"Max Hold Days (default: {MAX_HOLD_DAYS})")
+    
+    args = parser.parse_args()
+    run_backtest(args)
+
+if __name__ == "__main__":
+    main()

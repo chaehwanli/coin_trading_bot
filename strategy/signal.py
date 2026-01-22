@@ -34,8 +34,8 @@ class SignalGenerator:
         histogram = row['macd_hist']
 
         # Logic from user request
-        # macd_bullish = macd_line > signal_line and histogram > 0
-        macd_bullish = (macd_line > signal_line) and (histogram > 0)
+        # macd_bullish = macd_line > signal_line
+        macd_bullish = macd_line > signal_line
         
         # rsi_oversold = rsi < self.rsi_oversold
         rsi_is_oversold = rsi < self.rsi_oversold

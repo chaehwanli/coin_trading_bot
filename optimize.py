@@ -1,7 +1,7 @@
 import argparse
 import pandas as pd
 import itertools
-from data_fetcher.upbit_api import UpbitAPI
+from utils.data_loader import load_data
 from backtester.backtest_engine import BacktestEngine
 from strategy.signal import SignalGenerator
 from config.logging_config import get_logger
@@ -10,12 +10,11 @@ from config.settings import TARGET_COIN, RSI_OVERSOLD, STOP_LOSS_PCT, TAKE_PROFI
 logger = get_logger("Optimizer")
 
 def fetch_data(market, days):
-    api = UpbitAPI()
-    df = api.get_ohlcv(market=market, interval="minute60", days=days)
-    if df.empty:
-        logger.error("No data fetched for optimization.")
+    df = load_data(market, days)
+    if df is None or df.empty:
+        logger.error("No data loaded. Did you run 'python collect_data.py'?")
         return None
-    logger.info(f"Data fetched: {len(df)} rows")
+    logger.info(f"Data loaded: {len(df)} rows")
     return df
 
 def optimize_rsi(df):
@@ -37,9 +36,9 @@ def optimize_rsi(df):
         })
     return pd.DataFrame(results)
 
-def optimize_pnl_maxhold(df):
+def optimize_pnl_maxhold(df, rsi_val=RSI_OVERSOLD):
     results = []
-    logger.info("Starting PnL & MaxHold Optimization...")
+    logger.info(f"Starting PnL & MaxHold Optimization (Fixed RSI={rsi_val})...")
     
     # Ranges
     stop_loss_range = [1.0, 2.0, 3.0, 4.0, 5.0] # 5 steps
@@ -50,8 +49,8 @@ def optimize_pnl_maxhold(df):
     combinations = list(itertools.product(stop_loss_range, take_profit_range, max_hold_range))
     
     for sl, tp, mh in combinations:
-        # Use default RSI (or currently configured one)
-        signal_gen = SignalGenerator(rsi_oversold=RSI_OVERSOLD)
+        # Use provided RSI
+        signal_gen = SignalGenerator(rsi_oversold=rsi_val)
         
         engine = BacktestEngine(
             df.copy(), 
@@ -79,6 +78,7 @@ def main():
     parser.add_argument("--mode", type=str, required=True, choices=['rsi', 'pnl'], help="Optimization mode: 'rsi' or 'pnl'")
     parser.add_argument("--market", type=str, default=TARGET_COIN, help="Market to optimize (e.g., KRW-BTC)")
     parser.add_argument("--days", type=int, default=365, help="Days of history to backtest")
+    parser.add_argument("--rsi", type=float, default=RSI_OVERSOLD, help=f"RSI Oversold Threshold (default: {RSI_OVERSOLD})")
     
     args = parser.parse_args()
     
@@ -90,7 +90,8 @@ def main():
         results_df = optimize_rsi(df)
         sort_cols = ['return_pct']
     elif args.mode == 'pnl':
-        results_df = optimize_pnl_maxhold(df)
+        # Pass the custom RSI value (or default)
+        results_df = optimize_pnl_maxhold(df, rsi_val=args.rsi)
         sort_cols = ['return_pct']
 
     if not results_df.empty:

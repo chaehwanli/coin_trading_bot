@@ -8,14 +8,14 @@ ACCESS_KEY = os.getenv("UPBIT_ACCESS_KEY")
 SECRET_KEY = os.getenv("UPBIT_SECRET_KEY")
 
 # Trading Mode
-MOCK_TRADING = os.getenv("MOCK_TRADING", "True").lower() == "true"
+MOCK_TRADING = True
 TRADING_MODE_LABEL = "모의거래" if MOCK_TRADING else "실거래"
 
 # Trading Parameters
 TARGET_COIN = "KRW-BTC"  # Default, can be overridden
 TICKER_INTERVAL = "minute60"  # 1 hour
 RSI_PERIOD = 14
-RSI_OVERSOLD = 30  # Default, optimization will override
+RSI_OVERSOLD = 44  # Default, optimization will override
 RSI_OVERBOUGHT = 70
 
 MACD_FAST = 12
@@ -23,9 +23,9 @@ MACD_SLOW = 26
 MACD_SIGNAL = 9
 
 # Strategy Risk Management
-STOP_LOSS_PCT = 3.0  # 3.0%
-TAKE_PROFIT_PCT = 35.0  # 35.0%
-MAX_HOLD_DAYS = 5
+STOP_LOSS_PCT = 1.0  # 3.0%
+TAKE_PROFIT_PCT = 10.0  # 35.0%
+MAX_HOLD_DAYS = 10
 
 # Trading Amount
 INITIAL_CAPITAL = 1000000  # 1 Million KRW

@@ -117,7 +117,15 @@ TELEGRAM_CHAT_ID="your_chat_id"
 The application uses `python-dotenv` to load these values automatically.
 
 
-## 2. Optimization (Recommended First Step)
+## 2. Data Collection (Required for Fast Backtesting)
+The bot now supports local data caching to speed up backtests.
+Run this command periodically to fetch the latest data from Upbit:
+```bash
+python collect_data.py --days 365
+```
+Data will be saved to the `data/` directory.
+
+## 3. Optimization
 Run the optimization script to find the best parameters.
 
 ### RSI Optimization
@@ -128,23 +136,36 @@ python optimize.py --mode rsi --market KRW-BTC --days 365
 
 ### Risk Parameter Optimization
 Find the best combination of Stop Loss, Take Profit, and Max Hold Days.
+You can specify a target RSI (e.g., 40) to test against using `--rsi`.
 ```bash
-python optimize.py --mode pnl --market KRW-BTC --days 365
+python optimize.py --mode pnl --market KRW-BTC --days 365 --rsi 40
 ```
 
 This will save results to `optimization_results_{mode}_{market}.csv`.
 **Update `config/settings.py`** with the best parameters found.
 
-## 3. Backtesting
-You can also run a manual backtest (the optimization script essentially does this, but standard backtest code is in `backtester/backtest_engine.py` and can be wrapped if needed).
+## 4. Backtesting
 
-## 4. Running the Bot
+### Single Run
+To run a specific backtest strategy and see detailed logs:
+```bash
+python backtest.py --market KRW-BTC --days 365 --rsi 30 --sl 3.0 --tp 35.0
+```
+
+### Batch Run (Multi-Coin Report)
+To run backtests on multiple coins (BTC, ETH, XRP, SOL, DOGE, ADA) and generate a summary report:
+```bash
+python batch_backtest.py
+```
+This requires data to be collected first via `collect_data.py`.
+
+## 5. Running the Bot
 Start the bot. It will run every hour at minute 01.
 ```bash
 python main.py
 ```
 
-## Features
+## 6. Features
 - **Strategy**: 1-hour timeframe. Buy on RSI Oversold + MACD Golden Cross.
 - **Sell Logic**: 
     - Stop Loss: -3.0%
@@ -153,7 +174,7 @@ python main.py
 - **Notifications**: Telegram alerts for Buys, Sells, and Errors.
 - **Resilience**: Checks existing balance on restart to resume position management.
 
-## 5. Realistic Simulation (Slippage & Fees)
+## 7. Realistic Simulation (Slippage & Fees)
 To ensure backtest results match real-world conditions, the following costs are applied:
 - **Trading Fee**: 0.05% (Upbit Standard, applied to Buy and Sell).
 - **Slippage**: 0.05% (Conservative estimate).
