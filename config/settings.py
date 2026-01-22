@@ -25,6 +25,7 @@ MACD_SIGNAL = 9
 # Strategy Risk Management
 STOP_LOSS_PCT = 1.0  # 3.0%
 TAKE_PROFIT_PCT = 10.0  # 35.0%
+MIN_PROFIT_PCT = 4.0 # Minimum profit to secure at Max Hold
 MAX_HOLD_DAYS = 10
 
 # Trading Amount

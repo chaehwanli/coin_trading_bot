@@ -1,13 +1,14 @@
 import pandas as pd
 from strategy.signal import SignalGenerator
-from config.settings import STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, TRADE_FEE_RATE, SLIPPAGE_RATE
+from config.settings import STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, MIN_PROFIT_PCT, TRADE_FEE_RATE, SLIPPAGE_RATE
 import logging
 
 logger = logging.getLogger("BacktestEngine")
 
 class BacktestEngine:
     def __init__(self, df, initial_capital=1000000, signal_generator=None, 
-                 stop_loss_pct=STOP_LOSS_PCT, take_profit_pct=TAKE_PROFIT_PCT, max_hold_days=MAX_HOLD_DAYS):
+                 stop_loss_pct=STOP_LOSS_PCT, take_profit_pct=TAKE_PROFIT_PCT, 
+                 max_hold_days=MAX_HOLD_DAYS, min_profit_pct=MIN_PROFIT_PCT):
         self.df = df
         self.initial_capital = initial_capital
         self.balance = initial_capital
@@ -19,6 +20,7 @@ class BacktestEngine:
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         self.max_hold_days = max_hold_days
+        self.min_profit_pct = min_profit_pct
         
         # Validation checks
         if self.df is None or self.df.empty:
@@ -61,8 +63,8 @@ class BacktestEngine:
                     sell_reason = "Stop Loss"
                 elif pnl_pct >= self.take_profit_pct:
                     sell_reason = "Take Profit"
-                # 6.2 Max Hold Days
-                elif days_held >= self.max_hold_days:
+                # 6.2 Max Hold Days (Dynamic)
+                elif days_held >= self.max_hold_days and pnl_pct >= self.min_profit_pct:
                     sell_reason = "Max Hold Days"
                 
                 if sell_reason:

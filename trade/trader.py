@@ -1,5 +1,5 @@
 from data_fetcher.upbit_api import UpbitAPI
-from config.settings import TARGET_COIN, TRADE_FEE_RATE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS
+from config.settings import TARGET_COIN, TRADE_FEE_RATE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, MIN_PROFIT_PCT
 from config.logging_config import get_logger
 from utils.telegram_notifier import send_message
 import datetime
@@ -114,8 +114,8 @@ class Trader:
             self.sell_market(reason=f"Stop Loss ({pnl_pct:.2f}%)")
         elif pnl_pct >= TAKE_PROFIT_PCT:
             self.sell_market(reason=f"Take Profit ({pnl_pct:.2f}%)")
-        elif days_held >= MAX_HOLD_DAYS:
-            self.sell_market(reason=f"Max Hold Days ({days_held:.1f} days)")
+        elif days_held >= MAX_HOLD_DAYS and pnl_pct >= MIN_PROFIT_PCT:
+            self.sell_market(reason=f"Max Hold (Profit {pnl_pct:.2f}%)")
 
     def get_market_state(self):
         return self.position is not None
