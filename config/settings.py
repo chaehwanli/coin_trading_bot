@@ -1,8 +1,15 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Upbit API Keys
 ACCESS_KEY = os.getenv("UPBIT_ACCESS_KEY")
 SECRET_KEY = os.getenv("UPBIT_SECRET_KEY")
+
+# Trading Mode
+MOCK_TRADING = os.getenv("MOCK_TRADING", "True").lower() == "true"
+TRADING_MODE_LABEL = "모의거래" if MOCK_TRADING else "실거래"
 
 # Trading Parameters
 TARGET_COIN = "KRW-BTC"  # Default, can be overridden
@@ -28,3 +35,5 @@ SLIPPAGE_RATE = 0.0005 # 0.05% Estimated Slippage (Conservative)
 # Telegram
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+TELEGRAM_PREFIX = f"[Upbit Coin Trading Bot][{TRADING_MODE_LABEL}][{TARGET_COIN}]"

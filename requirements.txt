@@ -3,3 +3,4 @@ pandas
 pyjwt
 schedule
 numpy
+python-dotenv

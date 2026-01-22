@@ -80,10 +80,15 @@ Long Max Hold Days: 5일
 12. 슬리피지 고려
 매수/매도 시 슬리피지가 발생할 수 있으므로 이를 고려한다.
 Backtest 시에도 적용한다.
+거래시간도 슬리피지를 고려해서 정각 1분에 동작해. (예: 09:01에 1시간 봉 확인후 거래 여부 판단 동작)
 
 13. 수수료 고려
 매수/매도 시 수수료가 발생할 수 있으므로 이를 고려한다.
 Backtest 시에도 적용한다.
+
+14. 텔레그램 메시지 
+텔레그램 메시지가 다른 봇 메시지와 구별되도록 키워드를 추가한다.
+[Upbit Coin Trading Bot][실거래|모의거래][종목]
 
 # Upbit Coin Trading Bot - Walkthrough
 
@@ -98,13 +103,19 @@ pip install -r requirements.txt
 ```
 
 ### Configure Environment Variables
-Set the following environment variables (or add to `config/settings.py` directly, though env vars are safer):
+Create a `.env` file in the project root (you can copy from `.env.example`):
 ```bash
-export UPBIT_ACCESS_KEY="your_access_key"
-export UPBIT_SECRET_KEY="your_secret_key"
-export TELEGRAM_BOT_TOKEN="your_bot_token"
-export TELEGRAM_CHAT_ID="your_chat_id"
+cp .env.example .env
 ```
+Edit the `.env` file with your actual keys and tokens:
+```ini
+UPBIT_ACCESS_KEY="your_access_key"
+UPBIT_SECRET_KEY="your_secret_key"
+TELEGRAM_BOT_TOKEN="your_bot_token"
+TELEGRAM_CHAT_ID="your_chat_id"
+```
+The application uses `python-dotenv` to load these values automatically.
+
 
 ## 2. Optimization (Recommended First Step)
 Run the optimization script to find the best parameters.

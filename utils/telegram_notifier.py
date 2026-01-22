@@ -1,5 +1,5 @@
 import requests
-from config.settings import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from config.settings import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PREFIX
 from config.logging_config import get_logger
 
 logger = get_logger("TelegramNotifier")
@@ -15,7 +15,7 @@ def send_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         'chat_id': TELEGRAM_CHAT_ID,
-        'text': message
+        'text': f"{TELEGRAM_PREFIX}\n{message}"
     }
 
     try:

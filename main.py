@@ -2,8 +2,9 @@ import time
 import datetime
 import schedule
 from config.logging_config import setup_logging, get_logger
-from config.settings import TARGET_COIN, RSI_OVERSOLD
+from config.settings import TARGET_COIN, RSI_OVERSOLD, MOCK_TRADING
 from data_fetcher.upbit_api import UpbitAPI
+from data_fetcher.mock_upbit_api import MockUpbitAPI
 from strategy.signal import SignalGenerator
 from trade.trader import Trader
 from utils.telegram_notifier import send_message
@@ -53,10 +54,13 @@ def run_trading_logic(trader, api, signal_gen):
         send_message(f"⚠️ Error in Bot: {e}")
 
 def main():
-    logger.info("Starting Coin Trading Bot...")
-    send_message("🤖 Coin Trading Bot Started")
+    logger.info(f"Starting Coin Trading Bot... Mode: {'MOCK' if MOCK_TRADING else 'REAL'}")
+    send_message(f"🤖 Coin Trading Bot Started ({'MOCK' if MOCK_TRADING else 'REAL'})")
 
-    api = UpbitAPI()
+    if MOCK_TRADING:
+        api = MockUpbitAPI()
+    else:
+        api = UpbitAPI()
     # Note: RSI_OVERSOLD should be updated based on Optimization results!
     # Ideally, load from a dynamic config or arguments. Defaulting to settings.py value.
     signal_gen = SignalGenerator(rsi_oversold=RSI_OVERSOLD) # 30 default
