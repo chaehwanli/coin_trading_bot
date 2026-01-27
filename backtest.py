@@ -26,15 +26,12 @@ def run_backtest(args):
     if df is None:
         return
 
-    logger.info(f"Running Backtest: RSI<{args.rsi}, SL={args.sl}%, TP={args.tp}%, MaxHold={args.max_hold}d")
+    logger.info(f"Running Backtest: RSI<{args.rsi}")
     
     signal_gen = SignalGenerator(rsi_oversold=args.rsi)
     engine = BacktestEngine(
         df, 
-        signal_generator=signal_gen,
-        stop_loss_pct=args.sl,
-        take_profit_pct=args.tp,
-        max_hold_days=args.max_hold
+        signal_generator=signal_gen
     )
     
     result = engine.run()
@@ -49,10 +46,7 @@ def run_backtest(args):
     print(f"Total Trades:    {result['total_trades']}")
     print("-" * 40)
     
-    # Optional: Save trace log if available
-    # Assuming BacktestEngine might have a log of trades, if implemented.
-    # The current engine returns a summary dict. 
-    # If we want detailed trade logs, we'd need to modify engine or capture logs.
+    engine.save_results(filename=f"backtest_details_{args.market}.csv")
 
 def main():
     parser = argparse.ArgumentParser(description="Run a single backtest simulation.")
@@ -61,9 +55,7 @@ def main():
     parser.add_argument("--days", type=int, default=365, help="Days to backtest (default: 365)")
     
     parser.add_argument("--rsi", type=float, default=RSI_OVERSOLD, help=f"RSI Oversold Threshold (default: {RSI_OVERSOLD})")
-    parser.add_argument("--sl", type=float, default=STOP_LOSS_PCT, help=f"Stop Loss % (default: {STOP_LOSS_PCT})")
-    parser.add_argument("--tp", type=float, default=TAKE_PROFIT_PCT, help=f"Take Profit % (default: {TAKE_PROFIT_PCT})")
-    parser.add_argument("--max-hold", type=int, default=MAX_HOLD_DAYS, help=f"Max Hold Days (default: {MAX_HOLD_DAYS})")
+    # Removed SL/TP/MaxHold args as they are now hardcoded in Strategy V2 settings or derived from ATR
     
     args = parser.parse_args()
     run_backtest(args)

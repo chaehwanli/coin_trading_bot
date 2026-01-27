@@ -1,6 +1,7 @@
 import pandas as pd
 from strategy.signal import SignalGenerator
-from config.settings import STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, MIN_PROFIT_PCT, TRADE_FEE_RATE, SLIPPAGE_RATE
+from config.settings import STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, MIN_PROFIT_PCT, TRADE_FEE_RATE, SLIPPAGE_RATE, ATR_K, RISK_PER_TRADE_PCT, MAX_CONSECUTIVE_LOSSES, COOLDOWN_CANDLES
+import datetime
 import logging
 
 logger = logging.getLogger("BacktestEngine")
@@ -28,15 +29,19 @@ class BacktestEngine:
 
     def run(self):
         """
-        Run the backtest simulation
+        Run the backtest simulation (Strategy V2)
         """
         # 1. Process Indicators
         self.df = self.signal_generator.process(self.df)
         
+        # State Variables
+        consecutive_losses = 0
+        cooldown_until = None
+        
         # 2. Iterate through candles
         for index, row in self.df.iterrows():
             # Skip if indicators are NaN (start of data)
-            if pd.isna(row['rsi']) or pd.isna(row['macd']):
+            if pd.isna(row['rsi']) or pd.isna(row['atr']):
                 continue
                 
             current_price = row['close']
@@ -47,53 +52,54 @@ class BacktestEngine:
                 entry_price = self.position['entry_price']
                 entry_time = self.position['entry_time']
                 quantity = self.position['quantity']
+                atr_at_entry = self.position['atr']
+                highest_price = self.position['highest_price']
                 
-                # Calculate PnL %
-                # Current Value = quantity * current_price
-                # Entry Value = quantity * entry_price
-                # PnL % = (current_price - entry_price) / entry_price * 100
-                pnl_pct = (current_price - entry_price) / entry_price * 100
+                # Update Highest Price for Trailing Stop
+                if current_price > highest_price:
+                    highest_price = current_price
+                    self.position['highest_price'] = highest_price
+
+                # Calculate Stops
+                # Note: atr_at_entry is fixed at entry.
+                # Stop Loss = Entry - (ATR * K)
+                # Trailing = Highest - (ATR * K)
                 
-                days_held = (current_time - entry_time).total_seconds() / (24 * 3600)
+                stop_loss_price = entry_price - (atr_at_entry * ATR_K)
+                trailing_stop_price = highest_price - (atr_at_entry * ATR_K)
                 
                 sell_reason = None
                 
-                # 6.1 Stop Loss / Take Profit
-                if pnl_pct <= -self.stop_loss_pct:
+                # PnL Pct (for logging/analysis/min_profit checks if needed - V2 relies on ATR)
+                pnl_pct = (current_price - entry_price) / entry_price * 100
+                
+                # Check Exits
+                if current_price <= stop_loss_price:
                     sell_reason = "Stop Loss"
-                elif pnl_pct >= self.take_profit_pct:
-                    sell_reason = "Take Profit"
-                # 6.2 Max Hold Days (Dynamic)
-                elif days_held >= self.max_hold_days and pnl_pct >= self.min_profit_pct:
-                    sell_reason = "Max Hold Days"
+                elif current_price <= trailing_stop_price:
+                    sell_reason = "Trailing Stop"
                 
                 if sell_reason:
                     # Execute Sell
-                    # Sell Price = Market Price * (1 - Slippage)
                     execution_price = current_price * (1 - SLIPPAGE_RATE)
                     sell_amount = quantity * execution_price
                     fee = sell_amount * TRADE_FEE_RATE
                     self.balance += (sell_amount - fee)
                     
-                    # Calculate real PnL based on execution price and net of all fees
-                    # Buy Cost = Quantity * Entry Price + Buy Fee (already deducted from balance)
-                    # Sell Proceeds = Quantity * Execution Price - Sell Fee
-                    # But self.trades already tracked fee for buy.
-                    # Simplest PnL: Final Proceeds - Cost Basis
+                    real_pnl_amount = (sell_amount - fee) - (quantity * entry_price) # Approx cost basis
                     
-                    cost_basis = quantity * entry_price # Raw cost
-                    # Note: We should probably track total cost including buy fee in 'position' for accurate PnL.
-                    # For now, pnl_amount = (Sell Amount - Sell Fee) - (Buy Amount + Buy Fee?)
-                    # Let's approximate:
-                    # Entry was: self.balance -= (amount_to_invest) -> quantity * price + fee
-                    
-                    # Correct PnL calculation:
-                    # Net Profit = (Sell Amount - Sell Fee) - (Original Investment)
-                    # Where Original Investment = Quantity * Entry Price + Entry Fee (But Entry Fee reduced our quantity if we did quantity = (invest - fee)/price)
-                    # Actually logic was: quantity = (invest - fee) / price.
-                    # So Cost = invest - fee. 
-                    # Wait, 'invest' is the amount removed from balance.
-                    
+                    # Update Cooldown State
+                    if sell_reason == "Stop Loss":
+                        consecutive_losses += 1
+                        if consecutive_losses >= MAX_CONSECUTIVE_LOSSES:
+                             # Activate Cooldown
+                             # 5 Candles from NOW. 
+                             # Assuming row['datetime'] is hourly close or open? 
+                             # If hourly data, +5 hours.
+                             cooldown_until = current_time + datetime.timedelta(hours=COOLDOWN_CANDLES)
+                    else:
+                        consecutive_losses = 0
+
                     self.trades.append({
                         'type': 'sell',
                         'time': current_time,
@@ -101,54 +107,78 @@ class BacktestEngine:
                         'execution_price': execution_price,
                         'quantity': quantity,
                         'reason': sell_reason,
-                        'pnl_pct': pnl_pct, # Strategy/Signal PnL (on raw price)
-                        'real_pnl_amount': (sell_amount - fee) - (quantity * entry_price), # Roughly
+                        'pnl_pct': pnl_pct, 
+                        'real_pnl_amount': real_pnl_amount,
                         'fee': fee,
                         'slippage_cost': (current_price - execution_price) * quantity,
                         'balance': self.balance
                     })
                     self.position = None
-                    continue # Cannot buy on the same candle we sold (simplification)
+                    continue 
 
             # --- Buy Logic ---
             if not self.position:
-                if self.signal_generator.check_buy_signal(row):
+                # Check Cooldown
+                if cooldown_until:
+                    if current_time < cooldown_until:
+                        continue # Skip
+                    else:
+                        cooldown_until = None
+                
+                # Use Trend Following Signal
+                if self.signal_generator.check_trend_following_buy_signal(row):
+                    # Use Prev ATR for sizing (Rule 3.2.2: ATR = ATR[t-1])
+                    # We added 'prev_atr' to DF in signal generator.
+                    atr = row.get('prev_atr', row['atr']) # Fallback to current if prev not found
+                    if pd.isna(atr) or atr == 0:
+                         continue
+
+                    # Position Sizing
+                    # Risk Amount = Capital * risk_pct
+                    # Size = Risk Amount / (ATR * K)
+                    
+                    capital = self.balance
+                    risk_amount = capital * (RISK_PER_TRADE_PCT / 100)
+                    stop_distance = atr * ATR_K
+                    
+                    if stop_distance == 0: continue
+                        
+                    target_qty = risk_amount / stop_distance
+                    
+                    # Ensure we don't buy more than we have cash for
+                    # Max Qty = (Capital * 0.999) / Price
+                    max_qty = (capital * 0.999) / (current_price * (1 + SLIPPAGE_RATE))
+                    quantity = min(target_qty, max_qty)
+                    
+                    # Min Value Check (e.g. 5000 KRW)
+                    if (quantity * current_price) < 5000:
+                        continue
+
                     # Execute Buy
-                    amount_to_invest = self.balance # Compound everything
-                    
-                    # Fee is deducted from investment amount usually or charged on top.
-                    # Upbit KRW market: Fee is deducted from KRW amount? Or we buy X coin and pay fee in KRW?
-                    # Generally: we pay fee from KRW.
-                    # Net Buy Amount = Invest - Fee
-                    # Fee = Invest * Fee Rate (approx, strictly it's Amount / (1+Rate) * Rate)
-                    # Let's stick to simple model: Fee is taken from capital.
-                    
-                    fee = amount_to_invest * TRADE_FEE_RATE
-                    net_capital = amount_to_invest - fee
-                    
-                    # Buy Execution Price = Market Price * (1 + Slippage)
                     execution_price = current_price * (1 + SLIPPAGE_RATE)
+                    cost = quantity * execution_price
+                    fee = cost * TRADE_FEE_RATE
                     
-                    if net_capital > 0:
-                        quantity = net_capital / execution_price
-                        self.balance = 0 # All in
-                        
-                        self.position = {
-                            'entry_price': execution_price, # We track execution price as entry for PnL
-                            'quantity': quantity,
-                            'entry_time': current_time
-                        }
-                        
-                        self.trades.append({
-                            'type': 'buy',
-                            'time': current_time,
-                            'price': current_price,
-                            'execution_price': execution_price,
-                            'quantity': quantity,
-                            'fee': fee,
-                            'slippage_cost': (execution_price - current_price) * quantity,
-                            'balance': self.balance
-                        })
+                    self.balance -= (cost + fee)
+                    
+                    self.position = {
+                        'entry_price': execution_price,
+                        'quantity': quantity,
+                        'entry_time': current_time,
+                        'atr': atr, # Store entry ATR for fixed stop distance
+                        'highest_price': execution_price
+                    }
+                    
+                    self.trades.append({
+                        'type': 'buy',
+                        'time': current_time,
+                        'price': current_price,
+                        'execution_price': execution_price,
+                        'quantity': quantity,
+                        'fee': fee,
+                        'slippage_cost': (execution_price - current_price) * quantity,
+                        'balance': self.balance
+                    })
 
         # End of Backtest: Force close position if open? 
         # Usually better to leave it open or mark as 'open' in report.

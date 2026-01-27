@@ -1,5 +1,5 @@
 from data_fetcher.upbit_api import UpbitAPI
-from config.settings import TARGET_COIN, TRADE_FEE_RATE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, MIN_PROFIT_PCT
+from config.settings import TARGET_COIN, TRADE_FEE_RATE, STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS, MIN_PROFIT_PCT, ATR_K, RISK_PER_TRADE_PCT, MAX_CONSECUTIVE_LOSSES, COOLDOWN_CANDLES
 from config.logging_config import get_logger
 from utils.telegram_notifier import send_message
 import datetime
@@ -16,6 +16,10 @@ class Trader:
         # For this implementation, we will try to infer from last order or keep in memory (reset on restart).
         # Better approach: Check if we have non-zero balance of the coin.
         self.position = None 
+        # Cooldown State
+        self.consecutive_losses = 0
+        self.cooldown_until = None # datetime object
+        
         self._sync_state()
 
     def _sync_state(self):
@@ -86,6 +90,28 @@ class Trader:
             logger.info(f"Sell Order Placed ({reason}): {result}")
             send_message(f"🔴 SELL Executed\nReason: {reason}\nVolume: {volume}")
             self.position = None
+            
+            # Cooldown Logic
+            if "Stop Loss" in reason:
+                self.consecutive_losses += 1
+                logger.info(f"Consecutive Losses: {self.consecutive_losses}")
+                
+                if self.consecutive_losses >= MAX_CONSECUTIVE_LOSSES:
+                    # Activate Cooldown
+                    # Default interval is 60 minutes.
+                    cooldown_minutes = COOLDOWN_CANDLES * 60 
+                    self.cooldown_until = datetime.datetime.now() + datetime.timedelta(minutes=cooldown_minutes)
+                    stop_msg = f"⛔ Cooldown Activated: {self.consecutive_losses} Losses. Paused until {self.cooldown_until.strftime('%H:%M')}"
+                    logger.warning(stop_msg)
+                    send_message(stop_msg)
+                    # Reset counter after activation? Rules say ">= N -> Activate". Usually reset or keep logic.
+                    # Let's reset to 0 after activation to restart cycle.
+                    self.consecutive_losses = 0 
+            else:
+                # Profit or other reason -> Reset losses
+                if self.consecutive_losses > 0:
+                    logger.info("Win or Exit -> Resetting Consecutive Losses")
+                self.consecutive_losses = 0
 
     def monitor_position(self, current_price):
         """
@@ -119,3 +145,119 @@ class Trader:
 
     def get_market_state(self):
         return self.position is not None
+
+    def calculate_position_size(self, atr, current_price):
+        """
+        Calculate position size based on Risk Per Trade and ATR
+        Position Size = (Total Capital * Risk%) / (ATR * k)
+        """
+        krw_balance = self.api.get_balance("KRW")
+        total_capital = krw_balance # Alternatively, use initial capital + profit
+        
+        risk_amount = total_capital * (RISK_PER_TRADE_PCT / 100)
+        stop_distance = atr * ATR_K
+        
+        if stop_distance == 0:
+            return 0
+            
+        position_qty = risk_amount / stop_distance
+        
+        # Determine max qty purchasable with current balance
+        max_qty = (krw_balance * 0.999) / current_price # 0.1% buffer for fees
+        
+        # Effective Quantity
+        qty_to_buy = min(position_qty, max_qty)
+        
+        # Check min order size (5000 KRW)
+        if (qty_to_buy * current_price) < 5500:
+            logger.warning(f"Calculated Position Size too small: {qty_to_buy*current_price} KRW")
+            return 0
+            
+        return qty_to_buy
+
+    def buy_strategic(self, current_price, atr):
+        """
+        Execute Buy Logic with Position Sizing
+        """
+        # Check Cooldown
+        if self.cooldown_until:
+            if datetime.datetime.now() < self.cooldown_until:
+                logger.info(f"Skipping signal due to Cooldown (Until {self.cooldown_until.strftime('%H:%M')})")
+                return
+            else:
+                # Cooldown Expired
+                self.cooldown_until = None
+                send_message("🟢 Cooldown Expired. Resuming Trading.")
+
+        qty = self.calculate_position_size(atr, current_price)
+        if qty <= 0:
+            return
+
+        # Upbit requires price for 'price' order (market buy by amount)
+        # However, we calculated 'quantity' (volume).
+        # We can use 'market' order (market buy by payload?)
+        # Upbit API: 
+        #   bid (buy) + price -> Market Buy by Amount (KRW)
+        #   ask (sell) + volume -> Market Sell by Volume (Coin)
+        #   bid (buy) + volume + limit -> Limit Buy
+        # We want to buy specific VOLUME at market. Upbit Market Buy only supports PRICE (KRW amount).
+        # So we convert QTY back to KRW Estimate.
+        
+        buy_amount_krw = math.floor(qty * current_price)
+        
+        # Fee buffer check again
+        krw_balance = self.api.get_balance("KRW")
+        if buy_amount_krw > (krw_balance - krw_balance * TRADE_FEE_RATE):
+             buy_amount_krw = math.floor(krw_balance * (1 - TRADE_FEE_RATE))
+
+        result = self.api.place_order(self.market, 'bid', price=buy_amount_krw, ord_type='price')
+        
+        if result:
+            logger.info(f"Strategic Buy Order Placed: {result}")
+            send_message(f"🔵 STRATEGIC BUY Executed\nAmount: {buy_amount_krw} KRW\nATR: {atr}")
+            
+            self._sync_state()
+            if self.position:
+                self.position['entry_time'] = datetime.datetime.now()
+                self.position['atr'] = atr
+                self.position['highest_price'] = current_price # Initialize highest price for trailing stop
+
+    def monitor_trend_position(self, current_price):
+        """
+        Monitor Position with ATR-based Trailing Stop
+        """
+        if not self.position:
+            return
+
+        entry_price = self.position.get('entry_price', current_price)
+        atr = self.position.get('atr', 0)
+        highest_price = self.position.get('highest_price', entry_price)
+        
+        # If ATR is missing (e.g. restart), we might need to recalculate or fallback.
+        # Fallback to Fixed % if ATR is 0
+        if atr == 0:
+            self.monitor_position(current_price)
+            return
+
+        # Update Highest Price
+        if current_price > highest_price:
+            highest_price = current_price
+            self.position['highest_price'] = highest_price # Update state
+
+        # Calculate Stops
+        stop_loss_price = entry_price - (atr * ATR_K)
+        trailing_stop_price = highest_price - (atr * ATR_K)
+        
+        # Current PnL
+        pnl_pct = (current_price - entry_price) / entry_price * 100
+        
+        # Check Exits
+        # 1. Hard Stop Loss (Initial Risk)
+        if current_price <= stop_loss_price:
+             self.sell_market(reason=f"ATR Stop Loss ({pnl_pct:.2f}%)")
+             
+        # 2. Trailing Stop
+        elif current_price <= trailing_stop_price:
+             self.sell_market(reason=f"ATR Trailing Stop ({pnl_pct:.2f}%)")
+        
+        # 3. No Max Hold Days for Trend Strategy (per README 7.2.3)

@@ -38,10 +38,7 @@ def run_batch_backtest(days=365):
             signal_gen = SignalGenerator(rsi_oversold=RSI_OVERSOLD)
             engine = BacktestEngine(
                 df,
-                signal_generator=signal_gen,
-                stop_loss_pct=STOP_LOSS_PCT,
-                take_profit_pct=TAKE_PROFIT_PCT,
-                max_hold_days=MAX_HOLD_DAYS
+                signal_generator=signal_gen
             )
             result = engine.run()
             trades = result['trades']
@@ -73,9 +70,12 @@ def run_batch_backtest(days=365):
                         tp_count += 1
                         wins += 1 # TP is a win
                         
+                    elif reason == 'Trailing Stop':
+                        tp_count += 1 # Trailing Stop is essentially a winning exit (usually)
+                        wins += 1 
+                        
                     elif reason.startswith('Max Hold Days'):
-                        # Check PnL to decide Win/Loss
-                        # We stored 'real_pnl_amount' in engine
+                         # Legacy check, but keeping just in case
                         pnl = t.get('real_pnl_amount', 0)
                         if pnl > 0:
                             mh_win += 1
@@ -98,7 +98,8 @@ def run_batch_backtest(days=365):
                 'Trades': total_trades,
                 'Win': wins,
                 'SL': sl_count,
-                'TP': tp_count,
+                'TS': tp_count, # Using TP column logic for TS in loop, let's rename or split.
+                'TP': 0, # Strategy V2 has no fixed TP
                 'MH(W)': mh_win,
                 'MH(L)': mh_loss,
                 'Fees': total_fees
@@ -109,11 +110,11 @@ def run_batch_backtest(days=365):
 
     # Print Report
     print("\n" + "="*105)
-    print(f"{'Code':<8} | {'Name':<15} | {'Return':<9} | {'Trades':<6} | {'Win':<4} | {'SL':<4} | {'TP':<4} | {'MH(W)':<5} | {'MH(L)':<5} | {'Fees':<7}")
+    print(f"{'Code':<8} | {'Name':<15} | {'Return':<9} | {'Trades':<6} | {'Win':<4} | {'SL':<4} | {'TS':<4} | {'MH(W)':<5} | {'MH(L)':<5} | {'Fees':<7}")
     print("-" * 105)
     
     for r in results:
-        print(f"{r['Code']:<8} | {r['Name']:<15} | {r['Return']:>8.2f}% | {r['Trades']:<6} | {r['Win']:<4} | {r['SL']:<4} | {r['TP']:<4} | {r['MH(W)']:<5} | {r['MH(L)']:<5} | {r['Fees']:<7.0f}")
+        print(f"{r['Code']:<8} | {r['Name']:<15} | {r['Return']:>8.2f}% | {r['Trades']:<6} | {r['Win']:<4} | {r['SL']:<4} | {r['TS']:<4} | {r['MH(W)']:<5} | {r['MH(L)']:<5} | {r['Fees']:<7.0f}")
     
     print("="*105)
 

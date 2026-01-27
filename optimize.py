@@ -5,7 +5,10 @@ from utils.data_loader import load_data
 from backtester.backtest_engine import BacktestEngine
 from strategy.signal import SignalGenerator
 from config.logging_config import get_logger
-from config.settings import TARGET_COIN, RSI_OVERSOLD, STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS
+from config.settings import (
+    TARGET_COIN, RSI_OVERSOLD, STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_DAYS,
+    RSI_OPT_MIN, RSI_OPT_MAX, RSI_OPT_STEP
+)
 
 logger = get_logger("Optimizer")
 
@@ -19,9 +22,9 @@ def fetch_data(market, days):
 
 def optimize_rsi(df):
     results = []
-    logger.info("Starting RSI Optimization (Range: 20-50)...")
+    logger.info(f"Starting RSI Optimization (Range: {RSI_OPT_MIN}-{RSI_OPT_MAX-1}, Step: {RSI_OPT_STEP})...")
     
-    for rsi_val in range(20, 51, 2):
+    for rsi_val in range(RSI_OPT_MIN, RSI_OPT_MAX, RSI_OPT_STEP):
         signal_gen = SignalGenerator(rsi_oversold=rsi_val)
         # Use default Risk Params
         engine = BacktestEngine(df.copy(), signal_generator=signal_gen)

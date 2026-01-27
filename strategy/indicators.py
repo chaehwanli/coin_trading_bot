@@ -30,3 +30,32 @@ class Indicators:
         signal_line = macd_line.ewm(span=signal, adjust=False).mean()
         histogram = macd_line - signal_line
         return macd_line, signal_line, histogram
+
+    @staticmethod
+    def calculate_atr(high, low, close, period=14):
+        high_low = high - low
+        high_close = np.abs(high - close.shift())
+        low_close = np.abs(low - close.shift())
+        
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = ranges.max(axis=1)
+        
+        # Wilder's Smoothing for ATR
+        atr = true_range.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+        return atr
+
+    @staticmethod
+    def calculate_ema(series, period):
+        return series.ewm(span=period, adjust=False).mean()
+
+    @staticmethod
+    def calculate_bollinger_bands(series, period=20, std_dev=2.0):
+        sma = series.rolling(window=period).mean()
+        std = series.rolling(window=period).std()
+        upper_band = sma + (std * std_dev)
+        lower_band = sma - (std * std_dev)
+        return upper_band, lower_band
+
+    @staticmethod
+    def calculate_sma(series, period):
+        return series.rolling(window=period).mean()

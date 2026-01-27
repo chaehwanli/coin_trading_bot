@@ -30,7 +30,29 @@ Coin 거래 봇, 업비트
 # 전략
 1. 정규장 시간동안 동작한다. 
 2. 1시간 분봉을 확인한다.
-3. 매수 시그널은 RSI + MACD 지표를 이용한다.
+3. 진입 시점 설계
+3.1 변동성 폭발 감지
+ATR 급변 구간 필터링
+```
+ATR[t] / ATR[t-5] > 1.5
+→ 진입 금지
+```
+3.1.1 변동성 폭발 감지된 경우에는 매수 시그널 탐색을 중지한다.
+3.1.2 변동성 폭발 감지된 이후 복원되면 매수 시그널 탐색을 재개한다.
+3.2 매수 시그널 감지
+3.2.1 매수 시그널 감지된 경우
+3.2.2 ATR 계산
+ATR은 “진입 이전 캔들까지만” 사용
+```
+ATR = ATR[t-1]
+진입 = t 캔들 시점
+```
+3.2.3 손절가 / 익절가 계산
+3.2.4 포지션 사이즈 확정
+3.3 주문 실행
+
+4. 매수 시그널
+4.1. RSI + MACD 지표를 이용한다.
 ```
 rsi_oversold = 50
 
@@ -49,44 +71,94 @@ rsi_oversold = 50
         else:
             self.nothing()
 ```
-5. 손실/수익 
+4.2 추세 추종형
+
+4.2.1 EMA(9/20) Cross
+4.2.2 BB 상단 돌파
+4.2.3 거래량 증가
+
+
+5. 손절/익절 
+5.1 명시적 손절/익절 지정 방법 
 ```
 Stop Loss: -3.0%
 Take Profit: 35.0%
 Long Max Hold Days: 5일
 ```
-6. 매도 규칙
-6.1 손실/수익 구간을 지킨다. (Stop Loss, Take Profit)
-6.2 최대 보유 기간을 지킨다. (Long Max Hold Days)
+5.2 ATR기반자동계산
+ATR은 “진입 이전 캔들까지만” 사용
+```
+ATR = ATR[t-1]
+진입 = t 캔들 시점
+```
+```
+손절가 = 진입가 - (ATR × k) // 기본 롱 포지션
+익절가 = 최고가 - (ATR × k) //트레일링 스탑 (추세 추종형)
+```
+k 값 : 1.2 ~ 1.8
 
-7. 거래 금액
+6. 포지션 사이즈
+6.1 고정 손실 금액 기준
+
+```
+포지션 크기 = (계좌 허용 손실 금액) / (ATR × k)
+예시
+계좌: 1,000,000원
+1회 허용 손실: 1% (10,000원)
+ATR: 500원
+k: 1.5
+
+포지션 = 10,000 / (500 × 1.5) ≈ 13.3 단위
+```
+
+➡️ 변동성 커질수록 자동으로 포지션 축소됨
+
+7. 매도 규칙 (손절/익절 지정 방식에 따라 다름)
+7.1 명시적 손절/익절 지정 방식
+7.1.1 손실/수익 구간을 지킨다. (Stop Loss, Take Profit)
+7.1.2 최대 보유 기간을 지킨다. (Long Max Hold Days)
+
+7.2 ATR 기반 자동 계산 방식
+7.2.1 손절가 = 진입가 - (ATR × k)
+7.2.2 익절가 = 최고가 - (ATR × k)
+7.2.3 최대 보유 기간 없음.
+
+7.3 연속 손절시 Cooldown
+```
+연속 손절 횟수 >= N
+→ Cooldown 활성화
+N = 2
+
+쿨다운 시간 : 5 캔들
+```
+8. 거래 금액
 초기 거래 시작 금액은 100만원으로 한다.
 거래 수수료도 포함한다.
 수익과 손실이 발생하면 초기 거래 금액에 계속 누적한다.
 소수점 거래 가능하다.
 
-8. 거래 결과 알림
+9. 거래 결과 알림
 거래 결과를 텔레그램으로 알림한다.
 
-9. 매수 판단 결과 알림
+10. 매수 판단 결과 알림
 매수 판단 결과를 텔레그램으로 알림한다.
 
-10. 국내 휴장일
+11. 국내 휴장일
 코인 시장은 365일 거래 가능하다.
 
-11. 거래 시간
+12. 거래 시간
 정규장 시간이 24시간이다.
 
-12. 슬리피지 고려
+13. 슬리피지 고려
 매수/매도 시 슬리피지가 발생할 수 있으므로 이를 고려한다.
 Backtest 시에도 적용한다.
 거래시간도 슬리피지를 고려해서 정각 1분에 동작해. (예: 09:01에 1시간 봉 확인후 거래 여부 판단 동작)
 
-13. 수수료 고려
+14. 수수료 고려
 매수/매도 시 수수료가 발생할 수 있으므로 이를 고려한다.
 Backtest 시에도 적용한다.
 
-14. 텔레그램 메시지 
+15. 텔레그램 메시지 
 텔레그램 메시지가 다른 봇 메시지와 구별되도록 키워드를 추가한다.
 [Upbit Coin Trading Bot][실거래|모의거래][종목]
 
@@ -167,10 +239,18 @@ python main.py
 
 ## 6. Features
 - **Strategy**: 1-hour timeframe. Buy on RSI Oversold + MACD Golden Cross.
+- **Trend Following Strategy** (New):
+    - **Conditions**: EMA Trend (Fast > Slow), Bollinger Band Breakout, Volume Spike.
+    - **Volatility Filter**: `ATR[t] / ATR[t-5] > 1.5` -> **Entry Forbidden**.
 - **Sell Logic**: 
     - Stop Loss: -3.0%
     - Take Profit: +35.0%
     - Max Hold: 5 Days
+- **Dynamic Risk Management (ATR Based)** (New):
+    - **Stop Loss**: `Entry - (ATR * K)`
+    - **Trailing Stop**: `Highest - (ATR * K)`
+    - **Position Sizing**: Risk-based quantity calculation (`Risk% / ATR Distance`).
+    - **Cooldown Logic**: 2 Consecutive Losses -> Pause Trading for 5 Candles.
 - **Notifications**: Telegram alerts for Buys, Sells, and Errors.
 - **Resilience**: Checks existing balance on restart to resume position management.
 
